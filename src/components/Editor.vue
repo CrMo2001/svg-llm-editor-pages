@@ -1,7 +1,7 @@
 <template>
   <div class="editor">
     <div class="editor-main">
-      <div class="svg-container">
+      <div class="svg-container" id="svg-container">
         <div v-if="svgCode == ''" class="upload-container">
           <button class="upload-btn" @click="uploadSvg">
             Upload SVG
@@ -89,7 +89,85 @@ function stopLoading() {
 
 function updateEditor(state: HistoryItem) {
   svgCode.value = state.answer;
+  console.log("update editor")
+  setTimeout(() => {
+    initializeSelector();
+  }, 0);
   saveToLocalStorage();
+}
+
+function initializeSelector() {
+  const container = document.getElementById('svg-container');
+  const svg = container?.getElementsByTagName('svg')[0];
+  if (!svg) {
+    console.error('SVG not found');
+    return;
+  }
+  svg.addEventListener("click", (event) => {
+    console.log(event.target);
+    toggleSelection(event.target as SVGElement);
+  })
+  const selectedElements = container?.getElementsByClassName('user-selected');
+  for (const selectedElement of selectedElements) {
+    selectedElement.classList.remove('user-selected');
+  }
+}
+
+function toggleSelection(element: SVGElement) {
+  if (element.tagName === 'svg') {
+    return;
+  }
+  if (element.classList.contains('user-selected')) {
+    element.classList.remove('user-selected');
+    removeAnimation(element);
+  } else {
+    element.classList.add('user-selected');
+    if (element.tagName === "text") {
+      const animate = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+      animate.setAttribute('attributeName', 'opacity');
+      animate.setAttribute('values', '1;0.5;1');
+      animate.setAttribute('dur', '0.75s');
+      animate.setAttribute('repeatCount', 'indefinite');
+
+      hackEditbyAnimation(element, 'stroke-width', '1');
+      hackEditbyAnimation(element, 'stroke', 'black');
+
+      element.appendChild(animate);
+    } else {
+      const animate = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+      animate.setAttribute('attributeName', 'stroke-dashoffset');
+      animate.setAttribute('values', '0;7');
+      animate.setAttribute('dur', '0.75s');
+      animate.setAttribute('repeatCount', 'indefinite');
+
+      element.appendChild(animate);
+
+      hackEditbyAnimation(element, 'stroke', 'black');
+      hackEditbyAnimation(element, 'stroke-width', '2');
+      hackEditbyAnimation(element, 'stroke-dasharray', '5 2');
+    }
+  }
+}
+
+function hackEditbyAnimation(element: Element, name: string, value: string) {
+  const animate = document.createElementNS('http://www.w3.org/2000/svg', 'animate');
+  animate.setAttribute('attributeName', name);
+  animate.setAttribute('from', value);
+  animate.setAttribute('to', value);
+  animate.setAttribute('dur', '0.1s');
+  animate.setAttribute('fill', 'freeze');
+  element.appendChild(animate);
+}
+
+function removeAnimation(element: SVGElement) {
+  const animations = [...element.getElementsByTagName('animate')];
+  console.log(animations);
+  for (const animation of animations) {
+    const parent = animation.parentNode;
+    if (parent) {
+      parent.removeChild(animation);
+    }
+  }
 }
 
 function uploadSvg() {
@@ -112,6 +190,13 @@ function uploadSvg() {
       const thumbnail = await getThumbnail(code);
 
       startLoading("")
+
+      // historyViewer.value?.addHistoryItem({
+      //   prompt: 'Upload initial SVG',
+      //   thumbnail,
+      //   answer: code,
+      // });
+      // stopLoading();
 
       const ws = await createSocket();
       ws.onmessage = (event) => {
@@ -234,9 +319,14 @@ async function edit() {
       loadingText.value = message;
     }
   };
+  const svgContainer = document.getElementById('svg-container');
+  const svg = svgContainer?.getElementsByTagName('svg')[0];
+  removeAnimation(svg as SVGElement);
+  const currentSVGCode = svg?.outerHTML;
+  // console.log("get current svg code", currentSVGCode)
   ws.send(JSON.stringify({
     type: 'edit',
-    svg: svgCode.value,
+    svg: currentSVGCode,
     instruction: promptValue,
     dependencies: dependecies,
     scene_graph: sceneGraph,
